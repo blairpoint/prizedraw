@@ -1,0 +1,6 @@
+{
+  "name": "Prize Draw",
+  "description": "Charity Lottery Prize Drawer for the Pally Rhythm for Ribbons campaign supporting cancer research and sponsor awards.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
