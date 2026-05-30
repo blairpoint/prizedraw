@@ -20,14 +20,14 @@ export const DEFAULT_TRANSITIONS: TransitionTimers = {
   ball_intro: 30,
   ball_spinning: 20,
   ball_reveal: 30,
-  victory_screen: 30,
+  victory_screen: 90,
   victory_promo_flip: 20,
   autopilot_countdown: 30,
   winners_leaderboard: 30,
   spinning_winner: 5,
   wheel_spinning: 10,
   presentation_video: 30,
-  id4_pause: 20,
+  id4_pause: 2,
 };
 
 export function parseTransitionsCfg(text: string): TransitionTimers {
@@ -60,16 +60,16 @@ export function parseTransitionsCfg(text: string): TransitionTimers {
   return result;
 }
 
-export async function fetchTransitionsCfg(): Promise<TransitionTimers> {
+export async function fetchTransitionsCfg(filename: string = "/transitions.cfg"): Promise<TransitionTimers> {
   try {
-    const res = await fetch("/transitions.cfg");
+    const res = await fetch(filename);
     if (!res.ok) {
       return DEFAULT_TRANSITIONS;
     }
     const txt = await res.text();
     return parseTransitionsCfg(txt);
   } catch (error) {
-    console.warn("Failed to fetch transitions.cfg, using defaults", error);
+    console.warn(`Failed to fetch ${filename}, using defaults`, error);
     return DEFAULT_TRANSITIONS;
   }
 }

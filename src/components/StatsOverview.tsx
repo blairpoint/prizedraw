@@ -1,5 +1,17 @@
+import React, { useState } from "react";
 import { Prize, Participant, DrawResult } from "../types";
-import { TrendingUp, Coins, Users, Ticket, Award, Calendar, Trash2, ShieldCheck, Download, AlertCircle, Volume2, Sparkles, UserCheck } from "lucide-react";
+import { TrendingUp, Coins, Users, Ticket, Award, Calendar, Trash2, ShieldCheck, Download, AlertCircle, Volume2, Sparkles, UserCheck, CloudRain, Mail } from "lucide-react";
+
+interface ServerLogEntry {
+  id: string;
+  round: number;
+  winner: string;
+  participantId?: string;
+  participantEmail?: string;
+  prize: string;
+  sponsor: string;
+  timestamp: string;
+}
 
 interface StatsOverviewProps {
   prizes: Prize[];
@@ -7,6 +19,16 @@ interface StatsOverviewProps {
   drawHistory: DrawResult[];
   onDeleteLog: (id: string) => void;
   onClearHistory: () => void;
+  onImportLogs: (logs: ServerLogEntry[]) => void;
+}
+
+interface EmailLogEntry {
+  timestamp: string;
+  recipient: string;
+  subject: string;
+  status: 'success' | 'failed';
+  messageId?: string;
+  error?: string;
 }
 
 export default function StatsOverview({
@@ -15,7 +37,56 @@ export default function StatsOverview({
   drawHistory,
   onDeleteLog,
   onClearHistory,
+  onImportLogs,
 }: StatsOverviewProps) {
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [serverLogs, setServerLogs] = useState<ServerLogEntry[]>([]);
+  const [selectedLogs, setSelectedLogs] = useState<Set<string>>(new Set());
+  const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+
+  const [showEmailLogsModal, setShowEmailLogsModal] = useState(false);
+  const [emailLogs, setEmailLogs] = useState<EmailLogEntry[]>([]);
+  const [isLoadingEmails, setIsLoadingEmails] = useState(false);
+
+  const handleFetchEmails = async () => {
+    setIsLoadingEmails(true);
+    try {
+      const res = await fetch('/api/emails');
+      if (res.ok) {
+        const data = await res.json();
+        setEmailLogs(data.logs || []);
+        setShowEmailLogsModal(true);
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Failed to fetch email logs from server');
+    }
+    setIsLoadingEmails(false);
+  };
+
+  const handleFetchLogs = async () => {
+    setIsLoadingLogs(true);
+    try {
+      const res = await fetch('/api/history');
+      if (res.ok) {
+        const data = await res.json();
+        setServerLogs(data.logs || []);
+        setShowImportModal(true);
+        // Select all by default
+        setSelectedLogs(new Set((data.logs || []).map((l: ServerLogEntry) => l.id)));
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Failed to fetch logs from server');
+    }
+    setIsLoadingLogs(false);
+  };
+
+  const handleConfirmImport = () => {
+    const logsToImport = serverLogs.filter(l => selectedLogs.has(l.id));
+    onImportLogs(logsToImport);
+    setShowImportModal(false);
+  };
   
   // Group prizes by sponsor
   const sponsorGroup: { [sponsor: string]: Prize[] } = {};
@@ -136,7 +207,25 @@ export default function StatsOverview({
               </div>
 
               {drawHistory.length > 0 && (
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center flex-wrap gap-2">
+                  <button
+                    onClick={handleFetchEmails}
+                    disabled={isLoadingEmails}
+                    className="flex items-center space-x-2 bg-pink-100 hover:bg-pink-300 disabled:opacity-50 border-2 border-black text-black font-black uppercase text-xs py-2 px-3.5 rounded-xl transition-transform active:scale-95 shadow-[2px_2px_0_0_rgba(0,0,0,1)] cursor-pointer"
+                  >
+                    <Mail size={13} className="stroke-[3]" />
+                    <span>{isLoadingEmails ? 'Loading...' : 'View Email Logs'}</span>
+                  </button>
+
+                  <button
+                    onClick={handleFetchLogs}
+                    disabled={isLoadingLogs}
+                    className="flex items-center space-x-2 bg-blue-500 hover:bg-blue-400 disabled:opacity-50 border-2 border-black text-black font-black uppercase text-xs py-2 px-3.5 rounded-xl transition-transform active:scale-95 shadow-[2px_2px_0_0_rgba(0,0,0,1)] cursor-pointer"
+                  >
+                    <CloudRain size={13} className="stroke-[3]" />
+                    <span>{isLoadingLogs ? 'Loading...' : 'Recover Logs'}</span>
+                  </button>
+
                   <button
                     onClick={handleExportLogsCSV}
                     className="flex items-center space-x-2 bg-yellow-405 hover:bg-yellow-300 border-2 border-black text-black font-black uppercase text-xs py-2 px-3.5 rounded-xl transition-transform active:scale-95 shadow-[2px_2px_0_0_rgba(0,0,0,1)] cursor-pointer"
@@ -257,6 +346,92 @@ export default function StatsOverview({
           </div>
         </div>
       </div>
+
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-2xl border-4 border-black p-6 shadow-2xl flex flex-col max-h-[90vh]">
+            <h2 className="text-2xl font-black uppercase mb-4">Restore Server Logs</h2>
+            {serverLogs.length === 0 ? (
+              <p className="p-4 text-center">No logs found on the server.</p>
+            ) : (
+              <div className="overflow-y-auto flex-1 border-2 border-black bg-zinc-50 rounded-xl p-2 space-y-2">
+                {serverLogs.map(log => (
+                  <label key={log.id} className="flex items-center space-x-3 p-3 bg-white border-2 border-black rounded-lg cursor-pointer hover:bg-yellow-50">
+                    <input
+                      type="checkbox"
+                      checked={selectedLogs.has(log.id)}
+                      onChange={(e) => {
+                        const newSet = new Set(selectedLogs);
+                        if (e.target.checked) newSet.add(log.id);
+                        else newSet.delete(log.id);
+                        setSelectedLogs(newSet);
+                      }}
+                      className="w-5 h-5"
+                    />
+                    <div className="flex-1">
+                      <div className="font-bold">Round {log.round} - {log.winner}</div>
+                      <div className="text-sm text-zinc-600">Won: {log.prize} from {log.sponsor}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            )}
+            <div className="mt-6 flex justify-end space-x-4">
+              <button
+                onClick={() => setShowImportModal(false)}
+                className="px-4 py-2 border-2 border-black font-bold rounded-xl"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmImport}
+                disabled={serverLogs.length === 0 || selectedLogs.size === 0}
+                className="px-4 py-2 bg-pink-500 font-black text-white border-2 border-black rounded-xl disabled:opacity-50"
+              >
+                Import Selected ({selectedLogs.size})
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEmailLogsModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-2xl border-4 border-black p-6 shadow-2xl flex flex-col max-h-[90vh]">
+            <h2 className="text-2xl font-black uppercase mb-4 flex items-center gap-2"><Mail size={24} /> Email Delivery History</h2>
+            {emailLogs.length === 0 ? (
+              <p className="p-4 text-center">No emails sent yet.</p>
+            ) : (
+              <div className="overflow-y-auto flex-1 border-2 border-black bg-zinc-50 rounded-xl p-2 space-y-2">
+                {emailLogs.map((log, i) => (
+                  <div key={i} className="flex items-center space-x-3 p-3 bg-white border-2 border-black rounded-lg">
+                    <div className="flex-1">
+                      <div className="font-bold">{log.subject}</div>
+                      <div className="text-sm text-zinc-600">To: {log.recipient} | {new Date(log.timestamp).toLocaleString()}</div>
+                      {log.error && <div className="text-xs text-red-600 font-medium">Error: {log.error}</div>}
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      {log.status === 'success' ? (
+                        <span className="bg-green-100 text-green-800 text-xs font-bold px-2 py-1 rounded-md border-2 border-green-800">Delivered</span>
+                      ) : (
+                        <span className="bg-red-100 text-red-800 text-xs font-bold px-2 py-1 rounded-md border-2 border-red-800">Failed</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="mt-6 flex justify-end space-x-4">
+              <button
+                onClick={() => setShowEmailLogsModal(false)}
+                className="px-4 py-2 font-bold bg-pink-500 text-white rounded-xl border-2 border-black hover:bg-pink-600"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

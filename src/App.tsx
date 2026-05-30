@@ -11,6 +11,7 @@ import PrizeWinnersWall from "./components/PrizeWinnersWall";
 import FeatureCommentBoard from "./components/FeatureCommentBoard";
 import { Trophy, Database, BarChart3, Ticket, Award, Volume2, Sparkles, Heart, RefreshCw, AlertCircle, Sparkle, Check, MessageSquare } from "lucide-react";
 import { playChime } from "./utils/audio";
+import StartupModal from "./components/StartupModal";
 
 export default function App() {
   // Navigation: "arena" | "spreadsheet" | "analytics" | "winners" | "reviews"
@@ -51,6 +52,22 @@ export default function App() {
   
   // Confetti trigger
   const [showConfetti, setShowConfetti] = useState(false);
+  const [showStartupModal, setShowStartupModal] = useState(true);
+  const [competitionStarted, setCompetitionStarted] = useState(false);
+  
+  const handleInitialize = (mode: "default" | "test" | "debug", logs: any[] | null, immersive: boolean) => {
+    setIsDebugMode(mode === 'debug');
+    setIsTestMode(mode === 'test');
+    localStorage.setItem("rhythm_ribbons_debug_mode", String(mode === 'debug'));
+    localStorage.setItem("rhythm_ribbons_test_mode", String(mode === 'test'));
+    
+    if (logs) {
+      handleImportLogs(logs);
+    }
+    if (immersive) toggleFullScreen();
+    setShowStartupModal(false);
+    setCompetitionStarted(true);
+  };
 
   // LCD TV Simple Mode for Large Screen
   const [isSimpleMode, setIsSimpleMode] = useState(true);
@@ -62,6 +79,23 @@ export default function App() {
       return false;
     }
   });
+
+  const [isTestMode, setIsTestMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("rhythm_ribbons_test_mode") === "true";
+    } catch (e) {
+      return false;
+    }
+  });
+
+  const toggleTestMode = () => {
+    const nextVal = !isTestMode;
+    setIsTestMode(nextVal);
+    try {
+      localStorage.setItem("rhythm_ribbons_test_mode", String(nextVal));
+    } catch (e) {}
+    playChime();
+  };
 
   const toggleDebugMode = () => {
     const nextVal = !isDebugMode;
@@ -133,7 +167,7 @@ export default function App() {
     
     const checkStatus = async () => {
       try {
-        const res = await fetch(`https://kvdb.io/b_d4a2760d_b4b4_4617_8bb1_58f2e77564ac/claim_${claimCode}`);
+        const res = await fetch(`/api/kv/claim_${claimCode}`);
         if (res.ok) {
           const val = await res.text();
           if (val.trim() === "claimed") {
@@ -142,7 +176,7 @@ export default function App() {
         }
 
         // Preload any existing Bonus Wheel prize for this claim code
-        const bonusRes = await fetch(`https://kvdb.io/b_d4a2760d_b4b4_4617_8bb1_58f2e77564ac/bonus_${claimCode}`);
+        const bonusRes = await fetch(`/api/kv/bonus_${claimCode}`);
         if (bonusRes.ok) {
           const bonusData = await bonusRes.json();
           if (bonusData && bonusData.additionalPrize) {
@@ -164,7 +198,7 @@ export default function App() {
     setPhoneSubmitting(true);
     setPhoneError("");
     try {
-      const res = await fetch(`https://kvdb.io/b_d4a2760d_b4b4_4617_8bb1_58f2e77564ac/claim_${claimCode}`, {
+      const res = await fetch(`/api/kv/claim_${claimCode}`, {
         method: "PUT",
         body: "claimed",
         headers: {
@@ -194,7 +228,7 @@ export default function App() {
     const interval = setInterval(() => {
       unclaimedHistory.forEach(async (item) => {
         try {
-          const res = await fetch(`https://kvdb.io/b_d4a2760d_b4b4_4617_8bb1_58f2e77564ac/claim_${item.id}`);
+          const res = await fetch(`/api/kv/claim_${item.id}`);
           if (res.ok) {
             const txt = await res.text();
             if (txt.trim() === "claimed") {
@@ -232,7 +266,7 @@ export default function App() {
     const bonusInterval = setInterval(() => {
       unsolvedBonusHistory.forEach(async (item) => {
         try {
-          const res = await fetch(`https://kvdb.io/b_d4a2760d_b4b4_4617_8bb1_58f2e77564ac/bonus_${item.id}`);
+          const res = await fetch(`/api/kv/bonus_${item.id}`);
           if (res.ok) {
             const data = await res.json();
             if (data && data.additionalPrize) {
@@ -271,7 +305,7 @@ export default function App() {
 
     // Sync to KVDb
     try {
-      await fetch(`https://kvdb.io/b_d4a2760d_b4b4_4617_8bb1_58f2e77564ac/claim_${id}`, {
+      await fetch(`/api/kv/claim_${id}`, {
         method: "PUT",
         body: !currentClaimed ? "claimed" : "unclaimed",
         headers: {
@@ -357,7 +391,7 @@ export default function App() {
 
       // Write to KVDB
       try {
-        await fetch(`https://kvdb.io/b_d4a2760d_b4b4_4617_8bb1_58f2e77564ac/bonus_${claimCode}`, {
+        await fetch(`/api/kv/bonus_${claimCode}`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json"
@@ -625,31 +659,15 @@ export default function App() {
       const cachedHistory = localStorage.getItem("prize-draw-history");
       const cachedSponsors = localStorage.getItem("prize-draw-sponsors");
 
-      const dbVersion = localStorage.getItem("prize-draw-version-v2");
-      if (dbVersion !== "v2") {
+      const dbVersion = localStorage.getItem("prize-draw-version-v4");
+      if (dbVersion !== "v4") {
         localStorage.removeItem("prize-draw-prizes");
+        localStorage.removeItem("prize-draw-history");
         localStorage.removeItem("prize-draw-sponsors");
-        localStorage.setItem("prize-draw-version-v2", "v2");
+        localStorage.setItem("prize-draw-version-v4", "v4");
         setPrizes(loadedPrizes);
-      } else if (cachedPrizes) {
-        setPrizes(JSON.parse(cachedPrizes));
-      } else {
-        setPrizes(loadedPrizes);
-      }
-
-      if (cachedParticipants) {
-        setParticipants(JSON.parse(cachedParticipants));
-      } else {
-        setParticipants(loadedParticipants);
-      }
-
-      if (cachedHistory) {
-        setDrawHistory(JSON.parse(cachedHistory));
-      }
-
-      if (cachedSponsors) {
-        setSponsors(JSON.parse(cachedSponsors));
-      } else {
+        setDrawHistory([]);
+        
         const initialSponsors: Sponsor[] = [];
         loadedPrizes.forEach(p => {
           if (!initialSponsors.some(s => s.name.toLowerCase() === p.sponsor.toLowerCase())) {
@@ -662,6 +680,39 @@ export default function App() {
           }
         });
         setSponsors(initialSponsors);
+      } else {
+        if (cachedPrizes) {
+          setPrizes(JSON.parse(cachedPrizes));
+        } else {
+          setPrizes(loadedPrizes);
+        }
+
+        if (cachedParticipants) {
+          setParticipants(JSON.parse(cachedParticipants));
+        } else {
+          setParticipants(loadedParticipants);
+        }
+
+        if (cachedHistory) {
+          setDrawHistory(JSON.parse(cachedHistory));
+        }
+
+        if (cachedSponsors) {
+          setSponsors(JSON.parse(cachedSponsors));
+        } else {
+          const initialSponsors: Sponsor[] = [];
+          loadedPrizes.forEach(p => {
+            if (!initialSponsors.some(s => s.name.toLowerCase() === p.sponsor.toLowerCase())) {
+              initialSponsors.push({
+                id: p.sponsor.toLowerCase().replace(/[^a-z0-9]/g, ""),
+                name: p.sponsor,
+                logo: "",
+                adImages: []
+              });
+            }
+          });
+          setSponsors(initialSponsors);
+        }
       }
     } catch (e) {
       console.error("Local recovery error:", e);
@@ -691,21 +742,77 @@ export default function App() {
     }
   }, [sponsors]);
 
-  const handleDrawComplete = (result: DrawResult) => {
-    setDrawHistory(prev => [result, ...prev]);
+  const handleDrawComplete = async (result: DrawResult) => {
+    const roundNumber = drawHistory.length + 1;
+    
+    try {
+      await fetch('/api/history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: result.id,
+          round: roundNumber,
+          winner: result.participant.fullName,
+          participantId: result.participant.id,
+          participantEmail: result.participant.email,
+          prize: result.prize.label,
+          sponsor: result.prize.sponsor || 'Unknown Sponsor',
+          timestamp: result.timestamp
+        })
+      });
+    } catch (e) {
+      console.error('Failed to log draw history:', e);
+    }
+
+    const newHistory = [result, ...drawHistory];
+    setDrawHistory(newHistory);
 
     // Update drawn counts for prizes
-    setPrizes(prev =>
-      prev.map(p => {
-        if (p.label === result.prize.label && p.sponsor === result.prize.sponsor) {
-          return { ...p, drawnCount: p.drawnCount + 1 };
-        }
-        return p;
-      })
-    );
+    const newPrizes = prizes.map(p => {
+      if (p.id === result.prize.id) {
+        return { ...p, drawnCount: p.drawnCount + 1 };
+      }
+      return p;
+    });
+    
+    setPrizes(newPrizes);
 
     // Blast celebration confetti
     setShowConfetti(true);
+
+    // Check if competition is complete or reached 5th round
+    const checkAndSendReport = async () => {
+      const allDepleted = newPrizes.every(p => p.drawnCount >= p.quantity);
+      const isFifthRound = roundNumber > 0 && roundNumber % 5 === 0;
+
+      if (allDepleted || isFifthRound) {
+        let title = allDepleted ? 'Spotlight NZ - All Prizes Depleted Final Report' : `Spotlight NZ - Round ${roundNumber} Report`;
+        
+        const formatHistory = newHistory.map((h, i) => ({
+          round: newHistory.length - i,
+          winner: h.participant.fullName,
+          participantEmail: h.participant.email,
+          prize: h.prize.label,
+          sponsor: h.prize.sponsor || 'Unknown Sponsor',
+          timestamp: h.timestamp
+        }));
+        
+        // Sort ascending by round number
+        formatHistory.sort((a, b) => a.round - b.round);
+
+        try {
+          await fetch('/api/report', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ history: formatHistory, title })
+          });
+        } catch (e) {
+          console.error('Failed to send report email:', e);
+        }
+      }
+    };
+
+    checkAndSendReport();
   };
 
   // Safe reset all history
@@ -716,6 +823,60 @@ export default function App() {
     setShowConfetti(false);
   };
 
+  const handleImportLogs = (logs: any[]) => {
+    const newDraws: DrawResult[] = logs.map(log => {
+      let part = participants.find(p => p.id === log.participantId || p.email === log.participantEmail);
+      if (!part) {
+        part = {
+          id: log.participantId || `imported-${Date.now()}-${Math.random()}`,
+          orderId: '',
+          date: '',
+          status: 'Paid',
+          firstName: log.winner.split(' ')[0] || '',
+          lastName: log.winner.split(' ').slice(1).join(' '),
+          fullName: log.winner,
+          email: log.participantEmail || '',
+          ticketsCount: 1,
+        };
+      }
+      let prz = prizes.find(p => p.label === log.prize && p.sponsor === log.sponsor);
+      if (!prz) {
+        prz = {
+          id: `imported-prize-${Date.now()}-${Math.random()}`,
+          label: log.prize,
+          sponsor: log.sponsor,
+          quantity: 1,
+          drawnCount: 0,
+          value: 0
+        };
+      }
+      return {
+        id: log.id,
+        timestamp: log.timestamp,
+        participant: part,
+        prize: prz,
+        ticketNumber: 1
+      };
+    });
+
+    setDrawHistory(prev => {
+      const combined = [...newDraws, ...prev];
+      const unique = Array.from(new Map(combined.map(item => [item.id, item])).values());
+      return unique.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    });
+
+    setPrizes(prev => {
+      const next = [...prev];
+      logs.forEach(log => {
+        const przIndex = next.findIndex(p => p.label === log.prize && p.sponsor === log.sponsor && p.drawnCount < p.quantity);
+        if (przIndex !== -1) {
+          next[przIndex] = { ...next[przIndex], drawnCount: next[przIndex].drawnCount + 1 };
+        }
+      });
+      return next;
+    });
+  };
+
   // Safe undo single log draw
   const handleDeleteLog = (id: string) => {
     const targetLog = drawHistory.find(h => h.id === id);
@@ -724,7 +885,7 @@ export default function App() {
     // Refund prize quantity
     setPrizes(prev =>
       prev.map(p => {
-        if (p.label === targetLog.prize.label && p.sponsor === targetLog.prize.sponsor) {
+        if (p.id === targetLog.prize.id) {
           return { ...p, drawnCount: Math.max(0, p.drawnCount - 1) };
         }
         return p;
@@ -744,6 +905,8 @@ export default function App() {
 
   // Quick stat variables
   const totalPrizePoolValue = prizes.reduce((acc, p) => acc + p.value, 0);
+
+  if (showStartupModal) return <StartupModal onStart={handleInitialize} />;
 
   return (
     <div 
@@ -793,6 +956,7 @@ export default function App() {
 
       {/* Dynamic Confetti Streamer backdrop */}
       <Confetti active={showConfetti} />
+      {/* Startup modal now handled in main return */}
 
       {/* Primary Top Header Navigation Brand block */}
       {!isTotallyFullScreen && (
@@ -929,6 +1093,22 @@ export default function App() {
                 <span>⚙️ DEBUG: {isDebugMode ? "ON" : "OFF"}</span>
               </button>
 
+              <button
+                onClick={toggleTestMode}
+                className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg text-xs font-black uppercase tracking-wide border-2 border-black transition-all active:scale-95 shadow-[2px_2px_0_0_rgba(0,0,0,1)] cursor-pointer ${
+                  isTestMode 
+                    ? "bg-red-500 text-white hover:bg-red-400 font-extrabold border-red-900" 
+                    : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                }`}
+                title="Toggle fast transitions test mode"
+              >
+                <span className="relative flex h-2.5 w-2.5 mr-0.5">
+                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isTestMode ? "bg-red-300" : "bg-neutral-600"}`}></span>
+                  <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isTestMode ? "bg-red-500" : "bg-zinc-500"}`}></span>
+                </span>
+                <span>🧪 TEST MODE: {isTestMode ? "ON" : "OFF"}</span>
+              </button>
+
               <div className="hidden lg:block h-6 w-0.5 bg-zinc-850"></div>
 
               <div className="hidden lg:flex items-center space-x-2 font-sans text-right">
@@ -984,6 +1164,7 @@ export default function App() {
               participants={participants}
               setParticipants={setParticipants}
               onDrawComplete={handleDrawComplete}
+              onDrawStart={() => setShowConfetti(false)}
               drawHistory={drawHistory}
               isSimpleMode={isSimpleMode}
               isTotallyFullScreen={isTotallyFullScreen}
@@ -991,6 +1172,8 @@ export default function App() {
               onToggleClaim={handleToggleClaim}
               onAdditionalPrizeWon={handleAdditionalPrizeWon}
               isDebugMode={isDebugMode}
+              isTestMode={isTestMode}
+              onImportLogs={handleImportLogs}
             />
 
             {/* Premium feature comment board below arena for immediate operator reviews when not on large TV Simple Mode */}
@@ -1020,6 +1203,7 @@ export default function App() {
             drawHistory={drawHistory}
             onDeleteLog={handleDeleteLog}
             onClearHistory={handleClearHistory}
+            onImportLogs={handleImportLogs}
           />
         )}
 

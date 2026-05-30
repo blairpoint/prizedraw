@@ -31,6 +31,7 @@ export function parsePrizesCSV(csvText: string): Prize[] {
   const logoIdx = headers.findIndex(h => h === "sponsor logo" || h === "logo");
   const imagesIdx = headers.findIndex(h => h === "prize images" || h === "prize image" || h === "ad images");
   const qtyIdx = headers.findIndex(h => h === "qty" || h === "quantity");
+  const idIdx = headers.findIndex(h => h === "id");
   
   // existing fallback headers
   const contactIdx = headers.findIndex(h => h.includes("contact"));
@@ -49,6 +50,7 @@ export function parsePrizesCSV(csvText: string): Prize[] {
 
     const sponsorVal = sponsorIdx !== -1 && fields[sponsorIdx] ? fields[sponsorIdx].trim() : "";
     const labelVal = labelIdx !== -1 && fields[labelIdx] ? fields[labelIdx].trim() : "";
+    const idVal = idIdx !== -1 && fields[idIdx] ? fields[idIdx].trim() : "";
     
     if (!sponsorVal && !labelVal) continue; // Skip raw empty rows
 
@@ -79,22 +81,26 @@ export function parsePrizesCSV(csvText: string): Prize[] {
     const sponsorLogo = logoIdx !== -1 && fields[logoIdx] ? fields[logoIdx].trim() : "";
     const prizeImages = imagesIdx !== -1 && fields[imagesIdx] ? fields[imagesIdx].trim() : "";
 
-    prizes.push({
-      id: `prize-${i}-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-      sponsor,
-      label,
-      quantity,
-      contact,
-      details,
-      value,
-      confirmed,
-      notes,
-      logoReceived,
-      needShoutout,
-      drawnCount: 0,
-      sponsorLogo,
-      prizeImages
-    });
+    // Create individual prize entries for each quantity
+    for (let q = 0; q < quantity; q++) {
+      const uniqueId = idVal ? `${idVal}-${q}` : `prize-${i}-${q}-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+      prizes.push({
+        id: uniqueId,
+        sponsor,
+        label,
+        quantity: 1, // Each is now a single item prize
+        contact,
+        details,
+        value,
+        confirmed,
+        notes,
+        logoReceived,
+        needShoutout,
+        drawnCount: 0,
+        sponsorLogo,
+        prizeImages
+      });
+    }
   }
 
   return prizes;

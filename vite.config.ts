@@ -52,6 +52,17 @@ function sponsorFilesPlugin() {
           next();
         }
       });
+
+      // Serve testmode-transitions.cfg from root
+      server.middlewares.use('/testmode-transitions.cfg', (req, res, next) => {
+        const filePath = path.resolve(__dirname, 'testmode-transitions.cfg');
+        if (fs.existsSync(filePath)) {
+          res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+          fs.createReadStream(filePath).pipe(res);
+        } else {
+          next();
+        }
+      });
     },
     closeBundle() {
       // Copy sponsorfiles
@@ -69,6 +80,13 @@ function sponsorFilesPlugin() {
       const srcFile = path.resolve(__dirname, 'transitions.cfg');
       if (fs.existsSync(srcFile)) {
         fs.copyFileSync(srcFile, destFile);
+      }
+      
+      // Copy testmode-transitions.cfg
+      const destTestFile = path.resolve(__dirname, 'dist', 'testmode-transitions.cfg');
+      const srcTestFile = path.resolve(__dirname, 'testmode-transitions.cfg');
+      if (fs.existsSync(srcTestFile)) {
+        fs.copyFileSync(srcTestFile, destTestFile);
       }
     }
   };

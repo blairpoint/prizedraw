@@ -16,13 +16,10 @@ interface Particle {
 }
 
 const COLORS = [
-  "#FF6B6B", // Red coral
-  "#4D96FF", // Blue
-  "#6BCB77", // Green
-  "#FFD93D", // Gold/Yellow
+  "#FFFFFF", // White
   "#F473B9", // Pink
-  "#A084CF", // Purple
-  "#FF9F29", // Orange
+  "#FF69B4", // Hot Pink
+  "#FFC0CB", // Light Pink
 ];
 
 export default function Confetti({ active }: ConfettiProps) {

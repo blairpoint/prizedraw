@@ -1,16 +1,16 @@
-Sponsors,Prize Draw Label,Sponsor Logo,Prize Images,Qty
-Spizzicco,$25 Spizzicco Voucher,spizzicco-logo.png,spizzicco2.jpg,1
-Spizzicco,$25 Spizzicco Voucher,spizzicco-logo.png,spizzicco1.jpg,1
-3333 events ,Double Pass (3333 Events),3333-logo.png,,1
-Vonuts ,FREE $30 Donut Voucher,vonuts-logo.png,,1
-Equilibrium pain management coaching and massage therapy ,FREE Consultation and 90 Min massage,equillibrium-logo.png,,1
-Pally,Pally Gift Pack,pally-logo.png,,1
-Pally,Pally Gift Pack,pally-logo.png,,1
-Pally,Pally Gift Pack,pally-logo.png,,1
-Spotlight ,Double Pass (Spotlight),spotlight-logo.png,,1
-Waka gold,Waka Gold Honey Gift Pack,wakagold-logo.png,,1
-Waka gold,Waka Gold Honey Gift Pack,wakagold-logo.png,,1
-Waka gold,Waka Gold Honey Gift Pack,wakagold-logo.png,,1
-Superfina,$30 Voucher,superfina-logo.png,,1
-Superfina,$30 Voucher,superfina-logo.png,,1
-Nails By Naomi,$40 Voucher,nailsbynaomi.png,,1
+ID,Sponsors,Prize Draw Label,Sponsor Logo,Prize Images,Qty
+1,Waka gold,Waka Gold Honey Gift Pack 1/3,wakagold-logo.png,,1
+2,Pally,Pally Gift Pack 1/3,pally-logo.png,,1
+3,Vonuts ,FREE $30 Donut Voucher 1/1,vonuts-logo.png,,1
+4,Pally,Pally Gift Pack 2/3,pally-logo.png,,1
+5,Spizzicco,$25 Spizzicco Voucher 1/2,spizzicco-logo.png,spizzicco1.jpg,1
+6,Nails By Naomi,$40 Voucher 1/1,nailsbynaomi.png,,1
+7,Superfina,$30 Voucher 1/2,superfina-logo.png,,1
+8,3333 events ,Double Pass (3333 Events) 1/1,3333-logo.png,,1
+9,Waka gold,Waka Gold Honey Gift Pack 2/3,wakagold-logo.png,,1
+10,Spotlight ,Double Pass (Spotlight) 1/1,spotlight-logo.png,,1
+11,Equilibrium pain management coaching and massage therapy1/1,FREE Consultation and 90 Min massage,equillibrium-logo.png,,1
+12,Pally,Pally Gift Pack 3/3,pally-logo.png,,1
+13,Spizzicco,$25 Spizzicco Voucher 2/2,spizzicco-logo.png,spizzicco2.jpg,1
+14,Waka gold,Waka Gold Honey Gift Pack 3/3,wakagold-logo.png,,1
+15,Superfina,$30 Voucher 2/2,superfina-logo.png,,1

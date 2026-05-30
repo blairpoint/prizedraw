@@ -39,6 +39,7 @@ interface RaffleSpinnerProps {
   participants: Participant[];
   setParticipants: React.Dispatch<React.SetStateAction<Participant[]>>;
   onDrawComplete: (result: DrawResult) => void;
+  onDrawStart?: () => void;
   drawHistory: DrawResult[];
   isSimpleMode?: boolean;
   isTotallyFullScreen?: boolean;
@@ -46,6 +47,8 @@ interface RaffleSpinnerProps {
   onToggleClaim?: (id: string, currentClaimed: boolean) => void;
   onAdditionalPrizeWon?: (id: string, prize: string) => void;
   isDebugMode?: boolean;
+  isTestMode?: boolean;
+  onImportLogs?: (logs: any[]) => void;
 }
 
 export default function RaffleSpinner({
@@ -54,6 +57,7 @@ export default function RaffleSpinner({
   participants,
   setParticipants,
   onDrawComplete,
+  onDrawStart,
   drawHistory,
   isSimpleMode = false,
   isTotallyFullScreen = false,
@@ -61,7 +65,21 @@ export default function RaffleSpinner({
   onToggleClaim,
   onAdditionalPrizeWon,
   isDebugMode = false,
+  isTestMode = false,
+  onImportLogs,
 }: RaffleSpinnerProps) {
+  const getScheduledPrize = (availablePrizes: Prize[], currentRoundIndex: number): Prize | null => {
+    if (availablePrizes.length === 0) return null;
+    if (currentRoundIndex < prizes.length) {
+      const scheduledPrize = prizes[currentRoundIndex];
+      if (availablePrizes.some(p => p.id === scheduledPrize.id)) {
+        return scheduledPrize;
+      }
+    }
+    // Fallback if no match or out of schedule
+    return availablePrizes[0];
+  };
+
   // Simple Mode presentation progression: "ready" | "video" | "spinner" | "winners"
   const [simpleState, setSimpleState] = useState<"ready" | "video" | "spinner" | "winners">("video");
   const [videoTarget, setVideoTarget] = useState<"spinner" | "winners" | "spin">("spinner");
@@ -96,12 +114,7 @@ export default function RaffleSpinner({
                   setSimpleState("winners");
                 } else if (videoTarget === "spin") {
                   setSimpleState("spinner");
-                  if (nextDrawType === "wheel") {
-                    setCountdownVal(timers.id4_pause || 20);
-                    setDrawPhase("idle");
-                  } else {
-                    handleStartDraw();
-                  }
+                  handleStartDraw();
                 } else {
                   setSimpleState("spinner");
                 }
@@ -148,6 +161,37 @@ export default function RaffleSpinner({
   const [turboMode, setTurboMode] = useState(false); // Turbo Mode toggle
   const [soundEnabled, setSoundEnabled] = useState(true);
 
+  // Import logs state
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [serverLogs, setServerLogs] = useState<any[]>([]);
+  const [selectedLogs, setSelectedLogs] = useState<Set<string>>(new Set());
+  const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+
+  const handleFetchLogs = async () => {
+    setIsLoadingLogs(true);
+    try {
+      const res = await fetch('/api/history');
+      if (res.ok) {
+        const data = await res.json();
+        setServerLogs(data.logs || []);
+        setShowImportModal(true);
+        setSelectedLogs(new Set((data.logs || []).map((l: any) => l.id)));
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Failed to fetch logs from server');
+    }
+    setIsLoadingLogs(false);
+  };
+
+  const handleConfirmImport = () => {
+    const logsToImport = serverLogs.filter(l => selectedLogs.has(l.id));
+    if (onImportLogs) {
+      onImportLogs(logsToImport);
+    }
+    setShowImportModal(false);
+  };
+
   // Core spinning states
   const [isDrawing, setIsDrawing] = useState(false);
   const [activeRollName, setActiveRollName] = useState<string>("Ready to Spin");
@@ -173,7 +217,7 @@ export default function RaffleSpinner({
   const lastWedgeRef = useRef<number>(-1);
 
   // Gameshow drawing pipeline state
-  const [drawPhase, setDrawPhase] = useState<"idle" | "round_intro" | "spinning_winner" | "congrats_countdown" | "wheel_intro" | "wheel_spinning" | "ball_intro" | "ball_spinning" | "ball_reveal" | "victory_screen" | "victory_promo_flip" | "autopilot_countdown">("idle");
+  const [drawPhase, setDrawPhase] = useState<"idle" | "round_intro" | "spinning_winner" | "congrats_countdown" | "wheel_intro" | "wheel_spinning" | "ball_intro" | "ball_spinning" | "ball_dropping" | "ball_reveal" | "victory_screen" | "victory_promo_flip" | "autopilot_countdown">("idle");
   const [drawnWinner, setDrawnWinner] = useState<Participant | null>(null);
   const [drawnTicketIndex, setDrawnTicketIndex] = useState<number>(1);
   const [countdownVal, setCountdownVal] = useState<number>(30);
@@ -182,12 +226,12 @@ export default function RaffleSpinner({
   const [timers, setTimers] = useState<TransitionTimers>(DEFAULT_TRANSITIONS);
 
   useEffect(() => {
-    fetchTransitionsCfg().then(parsed => {
+    fetchTransitionsCfg(isTestMode ? "/testmode-transitions.cfg" : "/transitions.cfg").then(parsed => {
       setTimers(parsed);
       // Initialize countdownVal dynamically based on general or autopilot countdown
       setCountdownVal(parsed.autopilot_countdown);
     });
-  }, []);
+  }, [isTestMode]);
   const [wheelSponsors, setWheelSponsors] = useState<string[]>([]);
   const [wonSponsor, setWonSponsor] = useState<string>("");
   const [wonPrize, setWonPrize] = useState<Prize | null>(null);
@@ -218,7 +262,7 @@ export default function RaffleSpinner({
 
   // Simulation effect for lotto balls inside the lottery drum
   useEffect(() => {
-    if (drawPhase !== "ball_intro" && drawPhase !== "ball_spinning") {
+    if (drawPhase !== "ball_intro" && drawPhase !== "ball_spinning" && drawPhase !== "ball_dropping") {
       ballsRef.current = [];
       return;
     }
@@ -245,7 +289,7 @@ export default function RaffleSpinner({
       const count = 30;
       const CX = width / 2;
       const CY = height / 2;
-      const R = width / 2 - 12;
+      const R = (width / 2) * 0.86;
 
       const colors = [
         "#EC4899", // Pink
@@ -272,7 +316,7 @@ export default function RaffleSpinner({
           y,
           vx: Math.cos(moveAngle) * speed,
           vy: Math.sin(moveAngle) * speed,
-          radius: width / 30, // appropriate size inside circle
+          radius: width / 13, // make tumbleballs larger
           color: colors[i % colors.length],
           label: String(((i + 7) % 49) + 1), // Numbers from 1 to 49
         });
@@ -288,10 +332,10 @@ export default function RaffleSpinner({
 
       const CX = width / 2;
       const CY = height / 2;
-      const R = width / 2 - 10;
+      const R = (width / 2) * 0.86; // ensure balls stay perfectly within visual cage boundaries
 
       const balls = ballsRef.current;
-      const agitation = drawPhase === "ball_spinning" ? 0.45 : 0.15;
+      const agitation = (drawPhase === "ball_spinning" || drawPhase === "ball_dropping") ? 0.45 : 0.15;
       const gravity = 0.08;
 
       // Update position, velocity, and bounce walls
@@ -305,8 +349,8 @@ export default function RaffleSpinner({
         }
 
         const speed = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
-        const maxSpeed = drawPhase === "ball_spinning" ? 11 : 4.5;
-        const minSpeed = drawPhase === "ball_spinning" ? 2.5 : 1.0;
+        const maxSpeed = (drawPhase === "ball_spinning" || drawPhase === "ball_dropping") ? 11 : 4.5;
+        const minSpeed = (drawPhase === "ball_spinning" || drawPhase === "ball_dropping") ? 2.5 : 1.0;
 
         if (speed > maxSpeed) {
           b.vx = (b.vx / speed) * maxSpeed;
@@ -417,7 +461,7 @@ export default function RaffleSpinner({
       }
 
       // Rotate the cageAngle under ball_spinning
-      if (drawPhase === "ball_spinning") {
+      if (drawPhase === "ball_spinning" || drawPhase === "ball_dropping") {
         localCageAngle = (localCageAngle + 2) % 360;
         setCageAngle(localCageAngle);
       } else if (drawPhase === "ball_intro") {
@@ -724,6 +768,10 @@ export default function RaffleSpinner({
           {/* 1) spinning_winner */}
           {drawPhase === "spinning_winner" && (
             <div className="space-y-6 flex flex-col items-center justify-center max-w-4xl w-full px-4 animate-fade-in">
+              <div className="flex w-full justify-center -mb-2">
+                <img src="/sponsorfiles/r4r-logo.png" alt="Ride for a Reason Logo" className="h-20 md:h-28 w-auto object-contain filter drop-shadow-md brightness-110" />
+              </div>
+
               <span className="bg-[#E0338F]/20 text-[#E0338F] text-[10px] sm:text-xs font-black px-5 py-2 rounded-full border-2 border-[#E0338F] tracking-widest uppercase animate-pulse">
                 🔮 CONNECTING TO THE RAFFLE CYLINDER... 🔮
               </span>
@@ -790,12 +838,11 @@ export default function RaffleSpinner({
                   ></div>
                 </div>
                 
-                <div>
+                <div className="flex flex-col items-center justify-center gap-2">
                   <h3 className="font-display font-black text-lg sm:text-2xl text-yellow-405 text-glow-gold uppercase tracking-tight">
-                    {nextDrawType === "wheel" 
-                      ? `REVEALING SPONSOR WHEEL IN ${countdownVal}s` 
-                      : `REVEALING LUCKY BALL DRUM IN ${countdownVal}s`}
+                    {nextDrawType === "wheel" ? "REVEALING SPONSOR WHEEL IN" : "REVEALING LUCKY BALL DRUM IN"}
                   </h3>
+                  <span className="text-6xl sm:text-7xl font-mono font-black text-white animate-pulse">{countdownVal}s</span>
                 </div>
 
                 <button
@@ -888,8 +935,8 @@ export default function RaffleSpinner({
             </div>
           )}
 
-          {/* 3b) ball_spinning */}
-          {drawPhase === "ball_spinning" && (
+          {/* 3b) ball_spinning / ball_dropping */}
+          {(drawPhase === "ball_spinning" || drawPhase === "ball_dropping") && (
             <div className="space-y-6 flex flex-col items-center justify-center h-full max-h-screen relative w-full overflow-hidden animate-fade-in">
               <span className="bg-amber-500 text-black text-[10px] sm:text-xs font-black px-6 py-2 rounded-full border border-black tracking-widest uppercase z-10 shadow-[0_0_15px_rgba(245,158,11,0.5)] animate-pulse">
                 ⚡ TUMBLING THE MAGIC BALL CAGE ⚡
@@ -1127,11 +1174,38 @@ export default function RaffleSpinner({
                   }}
                 ></div>
 
-                <div className="space-y-1">
-                  <span className="text-[11px] font-mono font-bold tracking-widest text-zinc-500 uppercase block">OUTCOME DRAW WINNER</span>
-                  <h1 className="text-5xl sm:text-7xl md:text-8xl font-black text-white tracking-tighter uppercase font-display leading-none filter drop-shadow-[0_16px_40px_rgba(255,255,255,0.15)] block animate-flip-in-3d animation-delay-150">
-                    {drawnWinner.fullName}
-                  </h1>
+                <div className="space-y-6 flex flex-col items-center animate-flip-in-3d animation-delay-150">
+                  <div className="bg-[#E0338F]/15 border-4 border-[#E0338F] px-8 py-4 sm:px-12 sm:py-5 rounded-[48px] shadow-[0_0_80px_rgba(224,51,143,0.25)]">
+                    <h2 className="text-xl sm:text-3xl md:text-4xl font-display font-black uppercase text-glow-pink tracking-tight text-white leading-tight">
+                      {wonPrize.label}
+                    </h2>
+                  </div>
+                  <div className="flex items-center justify-center min-h-[100px] transform hover:scale-105 transition-transform duration-300">
+                    {(() => {
+                      const key = wonSponsor.toLowerCase().trim();
+                      const customSponsor = sponsors.find(s => s.name.toLowerCase().trim() === key);
+                      const resolvedLogo = customSponsor?.logo || wonPrize?.sponsorLogo;
+                      const computedLogo = getImageUrl(resolvedLogo, "", wonSponsor);
+                      if (computedLogo) {
+                        return (
+                          <img
+                            src={computedLogo}
+                            alt={`${wonSponsor} logo`}
+                            className="max-h-20 md:max-h-28 w-auto object-contain filter drop-shadow-md brightness-110"
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement;
+                              target.style.display = 'none';
+                            }}
+                          />
+                        );
+                      }
+                      if (key.includes("spizzicco") || key.includes("spizzico")) return <SpizzicoLogo className="scale-[1.5]" />;
+                      if (key.includes("superfina")) return <SuperfinaLogo className="scale-[1.5]" />;
+                      if (key.includes("waka")) return <WakaGoldLogo className="h-12" />;
+                      if (key.includes("pally")) return <PallyLogo className="scale-[1.5]" />;
+                      return <h2 className="font-display font-black text-3xl tracking-tighter text-glow-gold uppercase text-yellow-405">{wonSponsor}</h2>;
+                    })()}
+                  </div>
                 </div>
 
                 <div className="w-full max-w-sm space-y-2 pt-4">
@@ -1356,11 +1430,32 @@ export default function RaffleSpinner({
                       </h2>
                     </div>
 
-                    <div className="space-y-2 bg-zinc-900/60 rounded-2xl p-5 border border-zinc-850">
-                      <p className="text-[11px] font-mono text-zinc-400 font-black uppercase tracking-wider">REDEEM INSTRUCTIONS:</p>
-                      <p className="text-xs text-zinc-300 font-medium leading-relaxed">
-                        {wonPrize.details || `Congratulations! Contact the event administration counter with Ticket Orders ID #${drawnWinner?.orderId} to claim your exclusive ${wonPrize.label} voucher kindly provided by ${wonSponsor}.`}
-                      </p>
+                    <div className="space-y-6 bg-zinc-900/40 rounded-[40px] p-8 md:p-12 border border-zinc-800/50 max-w-4xl mx-auto w-full shadow-2xl backdrop-blur-sm">
+                      <p className="text-[13px] font-mono text-zinc-400 font-black uppercase tracking-wider">REDEEM INSTRUCTIONS</p>
+                      <div className="w-full">
+                        {wonPrize.details ? (
+                          <p className="text-2xl md:text-4xl text-white font-normal leading-snug text-center tracking-tight">
+                            {wonPrize.details}
+                          </p>
+                        ) : (
+                          <div className="flex flex-col items-center gap-8 text-center text-zinc-200 tracking-tight font-medium">
+                            <div className="text-3xl md:text-4xl flex items-center justify-center flex-wrap">
+                              Congratulations <strong className="text-4xl md:text-5xl font-black text-white px-3">{drawnWinner?.fullName}</strong> on your win.
+                            </div>
+                            <div className="text-xl md:text-2xl text-zinc-400 flex flex-col items-center gap-3">
+                              <div>Contact the event counter with Ticket Order ID</div>
+                              <div className="flex items-center justify-center flex-wrap gap-3">
+                                <strong className="text-pink-400 font-black select-all px-4 py-2 text-2xl md:text-3xl bg-pink-500/10 rounded-xl border border-pink-500/20 shadow-inner">
+                                  #{drawnWinner?.orderId}
+                                </strong>
+                                <span>to claim your</span>
+                                <strong className="text-white font-bold">{wonPrize.label}</strong>
+                              </div>
+                              <div>kindly provided by <strong className="text-yellow-400 font-black">{wonSponsor}</strong>.</div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                       {wonPrize.value > 0 && (
                         <p className="text-[10px] font-mono text-yellow-405 mt-2 font-bold uppercase tracking-wider">
                           CONTRIBUTION VALUE: NZD ${wonPrize.value}.00
@@ -1475,7 +1570,7 @@ export default function RaffleSpinner({
 
     const intervalId = setInterval(async () => {
       try {
-        const url = `https://kvdb.io/b_d4a2760d_b4b4_4617_8bb1_58f2e77564ac/bonus_${winnerReveal.id}`;
+        const url = `/api/kv/bonus_${winnerReveal.id}`;
         const res = await fetch(url);
         if (res.ok) {
           const data = await res.json();
@@ -1611,12 +1706,27 @@ export default function RaffleSpinner({
   }, [randomizedSlides.length]);
 
   // Compute available prizes
-  const availablePrizes = prizes.filter(p => {
+  const baseAvailablePrizes = prizes.filter(p => {
     // A prize is available if it has remaining quantity based on session drawn counts
     // Sum drawings of this prize from history
     const drawnThisPrize = drawHistory.filter(h => h.prize.label === p.label).length;
     return p.quantity > drawnThisPrize;
   });
+
+  const availablePrizes = baseAvailablePrizes.length > 0 ? baseAvailablePrizes : [{
+    id: `bonus-prize-id`,
+    sponsor: 'Charity Lotteries',
+    label: 'Bonus Prize: Donation Gratitude',
+    quantity: 1,
+    contact: 'N/A',
+    details: 'No prize details',
+    confirmed: true,
+    notes: 'Fallback prize',
+    logoReceived: true,
+    needShoutout: false,
+    drawnCount: 0,
+    value: 0
+  }];
 
   // Automatically select first available prize
   useEffect(() => {
@@ -1667,8 +1777,8 @@ export default function RaffleSpinner({
   // Automatically start the draw when entering the "spinner" state in Simple Mode
   useEffect(() => {
     if (isSimpleMode && simpleState === "spinner" && drawPhase === "idle" && poolEntries.length > 0) {
-      // Initialize countdown value to the configurable id4_pause duration (defaults to 20 seconds)
-      setCountdownVal(timers.id4_pause !== undefined ? timers.id4_pause : 20);
+      // Initialize countdown value to the configurable id4_pause duration (defaults to 2 seconds)
+      setCountdownVal(timers.id4_pause !== undefined ? timers.id4_pause : 2);
       
       // Randomize the selected prize (campaign) for this round
       const available = prizes.filter(p => {
@@ -1684,6 +1794,8 @@ export default function RaffleSpinner({
   }, [isSimpleMode, simpleState, drawPhase, poolEntries.length, timers.id4_pause]);
 
   const executeSpinningWinner = () => {
+    if (onDrawStart) onDrawStart();
+    
     // Start drawing!
     setDrawPhase("spinning_winner");
     setDrawnWinner(null);
@@ -1692,8 +1804,10 @@ export default function RaffleSpinner({
     setIsWheelZoomed(false);
     setTickerFlash(false);
 
-    // Pick a winner immediately
-    const winnerIndex = Math.floor(Math.random() * poolEntries.length);
+    // Pick a winner immediately using crypto logic
+    const arr = new Uint32Array(1);
+    crypto.getRandomValues(arr);
+    const winnerIndex = arr[0] % poolEntries.length;
     const winningEntry = poolEntries[winnerIndex];
 
     const currentDuration = turboMode ? 1.0 : duration;
@@ -1714,8 +1828,10 @@ export default function RaffleSpinner({
       }
 
       currentTick++;
-      // Choose random participant entry for tick view
-      const randomEntry = poolEntries[Math.floor(Math.random() * poolEntries.length)];
+      // Choose random participant entry for tick view using crypto
+      const tickArr = new Uint32Array(1);
+      crypto.getRandomValues(tickArr);
+      const randomEntry = poolEntries[tickArr[0] % poolEntries.length];
       setActiveRollName(randomEntry.participant.fullName);
       setActiveRollTicket(`ID: #${randomEntry.participant.orderId} (Ticket ${randomEntry.ticketIndex} of ${randomEntry.participant.ticketsCount})`);
 
@@ -1759,6 +1875,12 @@ export default function RaffleSpinner({
       return;
     }
 
+    onDrawStart?.();
+
+    // Select the scheduled prize for this round
+    const scheduledPrize = getScheduledPrize(remainingPrizes, drawHistory.length) || remainingPrizes[0];
+    setSelectedPrizeId(scheduledPrize.id);
+
     // Start with Round Intro Countdown
     setCountdownVal(10);
     setDrawPhase("round_intro");
@@ -1772,24 +1894,38 @@ export default function RaffleSpinner({
       return p.quantity > drawnCount;
     });
 
-    if (availablePrizesList.length === 0) {
-      alert("No available prizes remaining!");
-      setDrawPhase("idle");
-      return;
-    }
+    let selectedWinningPrize: Prize;
+    let availableSponsorsNames: string[];
 
-    const availableSponsorsNames = Array.from(new Set(availablePrizesList.map(p => p.sponsor)));
+    if (availablePrizesList.length === 0) {
+      selectedWinningPrize = {
+        id: `bonus-${Date.now()}`,
+        sponsor: 'Charity Lotteries',
+        label: 'Bonus Prize: Donation Gratitude',
+        quantity: 1,
+        contact: 'N/A',
+        details: 'No prize details',
+        confirmed: true,
+        notes: 'Fallback prize',
+        logoReceived: true,
+        needShoutout: false,
+        drawnCount: 0,
+        value: 0
+      };
+      availableSponsorsNames = ['Charity Lotteries'];
+    } else {
+      // Pick the scheduled prize from available
+      selectedWinningPrize = getScheduledPrize(availablePrizesList, drawHistory.length) || availablePrizesList[0];
+      availableSponsorsNames = Array.from(new Set(availablePrizesList.map(p => p.sponsor)));
+    }
 
     // Build segments list of size 12
     const segments: string[] = [];
     for (let i = 0; i < 12; i++) {
-      segments.push(availableSponsorsNames[i % availableSponsorsNames.length]);
+        segments.push(availableSponsorsNames[i % availableSponsorsNames.length]);
     }
     setWheelSponsors(segments);
 
-    // Pick a random prize from available
-    const randomPrizeIndex = Math.floor(Math.random() * availablePrizesList.length);
-    const selectedWinningPrize = availablePrizesList[randomPrizeIndex];
     setWonPrize(selectedWinningPrize);
     setWonSponsor(selectedWinningPrize.sponsor);
 
@@ -1926,15 +2062,27 @@ export default function RaffleSpinner({
       return p.quantity > drawnCount;
     });
 
-    if (availablePrizesList.length === 0) {
-      alert("No available prizes remaining!");
-      setDrawPhase("idle");
-      return;
-    }
+    let selectedWinningPrize: Prize;
 
-    // Pick a random prize from available
-    const randomPrizeIndex = Math.floor(Math.random() * availablePrizesList.length);
-    const selectedWinningPrize = availablePrizesList[randomPrizeIndex];
+    if (availablePrizesList.length === 0) {
+      selectedWinningPrize = {
+        id: `bonus-${Date.now()}`,
+        sponsor: 'Charity Lotteries',
+        label: 'Bonus Prize: Donation Gratitude',
+        quantity: 1,
+        contact: 'N/A',
+        details: 'No prize details',
+        confirmed: true,
+        notes: 'Fallback prize',
+        logoReceived: true,
+        needShoutout: false,
+        drawnCount: 0,
+        value: 0
+      };
+    } else {
+      // Pick the scheduled prize from available
+      selectedWinningPrize = getScheduledPrize(availablePrizesList, drawHistory.length) || availablePrizesList[0];
+    }
     setWonPrize(selectedWinningPrize);
     setWonSponsor(selectedWinningPrize.sponsor);
 
@@ -1952,6 +2100,7 @@ export default function RaffleSpinner({
   };
 
   const handleSpatBallReveal = () => {
+    setDrawPhase("ball_dropping");
     setIsSpatActive(true);
     setSpatBallY(180);
 
@@ -2045,7 +2194,13 @@ export default function RaffleSpinner({
     if (isSimpleMode) {
       setSimpleState("spinner");
     }
+    onDrawStart?.(); // Reset confetti
   };
+
+  const countdownRef = useRef(countdownVal);
+  useEffect(() => {
+    countdownRef.current = countdownVal;
+  }, [countdownVal]);
 
   // Master timer manager drives all sequential visual states
   useEffect(() => {
@@ -2066,120 +2221,138 @@ export default function RaffleSpinner({
     const timer = setInterval(() => {
       // 1) Handle drawPhase countdowns
       if (activePhases.includes(drawPhase)) {
-        setCountdownVal((prev) => {
-          if (prev <= 1) {
-            if (drawPhase === "round_intro") {
-              executeSpinningWinner();
-            } else if (drawPhase === "congrats_countdown") {
-              if (nextDrawType === "wheel") {
-                handleTransitionToWheelIntro();
-              } else {
-                handleTransitionToBallIntro();
-              }
-            } else if (drawPhase === "wheel_intro") {
-              handleStartWheelSpinning();
-            } else if (drawPhase === "ball_intro") {
-              handleStartBallSpinning();
-            } else if (drawPhase === "ball_spinning") {
-              handleSpatBallReveal();
-            } else if (drawPhase === "ball_reveal") {
-              playChime();
-              setCountdownVal(timers.victory_promo_flip);
-              setDrawPhase("victory_promo_flip");
-              // Toggle drawing type to alternate next draw (from ball reveal -> prepare wheel next)
-              setNextDrawType("wheel");
-            } else if (drawPhase === "victory_screen") {
-              playChime();
-              setCountdownVal(timers.victory_promo_flip);
-              setDrawPhase("victory_promo_flip");
-              // Set next draw type to ball after wheel spin
-              setNextDrawType("ball");
-            } else if (drawPhase === "victory_promo_flip") {
-              if (isSimpleMode) {
-                // Clean current states
-                setDrawnWinner(null);
-                setWonPrize(null);
-                setWonSponsor("");
-                setWinnerReveal(null);
-                
-                // Show winners leaderboard for 30s ("even in debug mode")
-                setSimpleState("winners");
-                setCountdownVal(timers.winners_leaderboard);
-                setDrawPhase("idle");
-                playChime();
-              } else {
-                setDrawPhase("idle");
-                setDrawnWinner(null);
-                setWonPrize(null);
-                setWonSponsor("");
-                setWinnerReveal(null);
-              }
-            } else if (drawPhase === "autopilot_countdown") {
-              // Reached 0 seconds left for the "next prize draw coming up" banner
-              // Move onto next round: play the video, then showing the leaderboard, etc.
-              setVideoTarget("winners");
-              setSimpleState("video");
-              setCountdownVal(timers.presentation_video || 30);
-              setDrawPhase("idle");
+        if (countdownRef.current <= 1) {
+          countdownRef.current = 0;
+          setCountdownVal(0);
+          
+          if (drawPhase === "round_intro") {
+            executeSpinningWinner();
+          } else if (drawPhase === "congrats_countdown") {
+            if (nextDrawType === "wheel") {
+              handleTransitionToWheelIntro();
+            } else {
+              handleTransitionToBallIntro();
             }
-            return 0;
+          } else if (drawPhase === "wheel_intro") {
+            handleStartWheelSpinning();
+          } else if (drawPhase === "ball_intro") {
+            handleStartBallSpinning();
+          } else if (drawPhase === "ball_spinning") {
+            handleSpatBallReveal();
+          } else if (drawPhase === "ball_reveal") {
+            playChime();
+            setCountdownVal(timers.victory_promo_flip || 20);
+            setDrawPhase("victory_promo_flip");
+            // Toggle drawing type to alternate next draw (from ball reveal -> prepare wheel next)
+            setNextDrawType("wheel");
+          } else if (drawPhase === "victory_screen") {
+            playChime();
+            setCountdownVal(timers.victory_promo_flip || 20);
+            setDrawPhase("victory_promo_flip");
+            // Set next draw type to ball after wheel spin
+            setNextDrawType("ball");
+          } else if (drawPhase === "victory_promo_flip") {
+            if (isSimpleMode) {
+              // Clean current states
+              setDrawnWinner(null);
+              setWonPrize(null);
+              setWonSponsor("");
+              setWinnerReveal(null);
+              
+              // Show winners leaderboard for 30s ("even in debug mode")
+              setSimpleState("winners");
+              setCountdownVal(timers.winners_leaderboard || 30);
+              setDrawPhase("idle");
+              playChime();
+              onDrawStart?.();
+            } else {
+              setDrawPhase("idle");
+              setDrawnWinner(null);
+              setWonPrize(null);
+              setWonSponsor("");
+              setWinnerReveal(null);
+              onDrawStart?.();
+            }
+          } else if (drawPhase === "autopilot_countdown") {
+            // Reached 0 seconds left for the "next prize draw coming up" banner
+            // Move onto next round: play the video, then showing the leaderboard, etc.
+            setVideoTarget("winners");
+            setSimpleState("video");
+            setCountdownVal(timers.presentation_video || 30);
+            setDrawPhase("idle");
           }
-          return prev - 1;
-        });
+        } else {
+          countdownRef.current -= 1;
+          setCountdownVal(countdownRef.current);
+        }
       }
 
       // 2) Handle leaderboard automatic TV transition
       if (isSimpleMode && simpleState === "winners" && drawPhase === "idle") {
-        setCountdownVal((prev) => {
-          if (prev <= 1) {
-            // Move onto the next round by loading id2 video page
+        if (countdownRef.current <= 1) {
+          countdownRef.current = 0;
+          setCountdownVal(0);
+          
+          const allDepleted = prizes.length > 0 && prizes.every(p => p.drawnCount >= p.quantity);
+          const isFifthRound = drawHistory.length > 0 && drawHistory.length % 5 === 0;
+
+          if (allDepleted || isFifthRound) {
+            // Immediately after it sends the email with the prize winners information, play the video again
             setVideoTarget("spin");
             setSimpleState("video");
             setCountdownVal(timers.presentation_video || 30);
             setDrawPhase("idle");
-            playChime();
-            return 0;
+          } else {
+            // Otherwise skip video (id2) and go straight to idle spinner (id4)
+            setVideoTarget("spinner");
+            setSimpleState("spinner");
+            const pauseVal = timers.id4_pause !== undefined ? timers.id4_pause : 2;
+            setCountdownVal(pauseVal);
+            countdownRef.current = pauseVal;
           }
-          return prev - 1;
-        });
+          playChime();
+        } else {
+          countdownRef.current -= 1;
+          setCountdownVal(countdownRef.current);
+        }
       }
 
       // 2.5) Handle video automatic fallback transition
       if (isSimpleMode && simpleState === "video" && drawPhase === "idle") {
-        setCountdownVal((prev) => {
-          if (prev <= 1) {
-            // Video timer ended, move to target
-            if (videoTarget === "winners") {
-              setSimpleState("winners");
-            } else if (videoTarget === "spin") {
-              setSimpleState("spinner");
-              if (nextDrawType === "wheel") {
-                // Wheel begins with state 4 (spinner idle, id4_pause)
-                setCountdownVal(timers.id4_pause || 20);
-                setDrawPhase("idle");
-              } else {
-                // Ping Pong skipped id4 and strictly begins with state 5
-                handleStartDraw();
-              }
-            } else {
-              setSimpleState("spinner");
-            }
-            playChime();
-            return 0;
+        if (countdownRef.current <= 1) {
+          countdownRef.current = 0;
+          setCountdownVal(0);
+          
+          // Video timer ended, move to target
+          if (videoTarget === "winners") {
+            setSimpleState("winners");
+          } else if (videoTarget === "spin") {
+            setSimpleState("spinner");
+            // Fall back to idle so id4_pause countdown takes effect before round_intro starts
+            const pauseVal = timers.id4_pause !== undefined ? timers.id4_pause : 2;
+            setCountdownVal(pauseVal);
+            countdownRef.current = pauseVal;
+          } else {
+            setSimpleState("spinner");
           }
-          return prev - 1;
-        });
+          playChime();
+        } else {
+          countdownRef.current -= 1;
+          setCountdownVal(countdownRef.current);
+        }
       }
 
       // 3) Handle ID4 auto-draw countdown (simpleState === "spinner" && drawPhase === "idle")
+      // Left intact just in case the app initialized in idle.
       if (isSimpleMode && simpleState === "spinner" && drawPhase === "idle" && poolEntries.length > 0) {
-        setCountdownVal((prev) => {
-          if (prev <= 1) {
-            handleStartDraw();
-            return 0;
-          }
-          return prev - 1;
-        });
+        if (countdownRef.current <= 1) {
+          countdownRef.current = 0;
+          setCountdownVal(0);
+          handleStartDraw();
+        } else {
+          countdownRef.current -= 1;
+          setCountdownVal(countdownRef.current);
+        }
       }
     }, 1000);
 
@@ -2199,6 +2372,58 @@ export default function RaffleSpinner({
       setDrawPhase("idle");
     }
   }, [winnerReveal, drawPhase]);
+
+  {/* Helper Method for rendering import modal */}
+  const renderImportModal = () => {
+    if (!showImportModal) return null;
+    return (
+      <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4">
+        <div className="bg-white text-black rounded-3xl w-full max-w-2xl border-4 border-black p-6 shadow-2xl flex flex-col max-h-[90vh]">
+          <h2 className="text-2xl font-black uppercase mb-4">Restore Server Logs</h2>
+          {serverLogs.length === 0 ? (
+            <p className="p-4 text-center">No logs found on the server.</p>
+          ) : (
+            <div className="overflow-y-auto flex-1 border-2 border-black bg-zinc-50 rounded-xl p-2 space-y-2">
+              {serverLogs.map(log => (
+                <label key={log.id} className="flex items-center space-x-3 p-3 bg-white border-2 border-black rounded-lg cursor-pointer hover:bg-yellow-50 text-black">
+                  <input
+                    type="checkbox"
+                    checked={selectedLogs.has(log.id)}
+                    onChange={(e) => {
+                      const newSet = new Set(selectedLogs);
+                      if (e.target.checked) newSet.add(log.id);
+                      else newSet.delete(log.id);
+                      setSelectedLogs(newSet);
+                    }}
+                    className="w-5 h-5"
+                  />
+                  <div className="flex-1">
+                    <div className="font-bold">Round {log.round} - {log.winner}</div>
+                    <div className="text-sm text-zinc-600">Won: {log.prize} from {log.sponsor}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          )}
+          <div className="mt-6 flex justify-end space-x-4">
+            <button
+              onClick={() => setShowImportModal(false)}
+              className="px-4 py-2 border-2 border-black font-bold rounded-xl hover:bg-zinc-100"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirmImport}
+              disabled={serverLogs.length === 0 || selectedLogs.size === 0}
+              className="px-4 py-2 bg-pink-500 font-black text-white border-2 border-black rounded-xl disabled:opacity-50 hover:-translate-y-0.5 active:translate-y-0 transition-all shadow-[4px_4px_0_0_rgba(0,0,0,1)] hover:shadow-[6px_6px_0_0_rgba(0,0,0,1)] active:shadow-[2px_2px_0_0_rgba(0,0,0,1)]"
+            >
+              Import Selected ({selectedLogs.size})
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   if (isSimpleMode) {
     const activeKey = activePrize ? getSponsorKey(activePrize.sponsor) : "";
@@ -2291,6 +2516,18 @@ export default function RaffleSpinner({
                 <span className="text-[10px] font-mono uppercase font-black tracking-widest text-[#E0338F]">
                   🎥 video id: 79LSKFMPwx4
                 </span>
+
+                {drawHistory.length === 0 && (
+                  <button
+                    onClick={() => {
+                      handleFetchLogs();
+                      playChime();
+                    }}
+                    className="mt-8 px-6 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white border-2 border-zinc-600 rounded-xl font-bold uppercase text-xs tracking-wider flex items-center gap-2 transition-all shadow-[4px_4px_0_0_rgba(255,255,255,0.1)] active:translate-y-0.5 active:shadow-[2px_2px_0_0_rgba(255,255,255,0.1)]"
+                  >
+                    <RefreshCw size={14} /> Resume Competition Logs
+                  </button>
+                )}
               </div>
             )}
 
@@ -2320,12 +2557,7 @@ export default function RaffleSpinner({
                         setSimpleState("winners");
                       } else if (videoTarget === "spin") {
                         setSimpleState("spinner");
-                        if (nextDrawType === "wheel") {
-                          setCountdownVal(timers.id4_pause || 20);
-                          setDrawPhase("idle");
-                        } else {
-                          handleStartDraw();
-                        }
+                        handleStartDraw();
                       } else {
                         setSimpleState("spinner");
                       }
@@ -2587,8 +2819,16 @@ export default function RaffleSpinner({
                   }}
                   isSimpleMode={true}
                   onGoToDraw={() => {
-                    setVideoTarget("spinner");
-                    setSimpleState("spinner");
+                    const allDepleted = prizes.length > 0 && prizes.every(p => p.drawnCount >= p.quantity);
+                    const isFifthRound = drawHistory.length > 0 && drawHistory.length % 5 === 0;
+                    
+                    if (allDepleted || isFifthRound) {
+                      setVideoTarget("spin");
+                      setSimpleState("video");
+                    } else {
+                      setVideoTarget("spinner");
+                      setSimpleState("spinner");
+                    }
                     playChime();
                   }}
                 />
@@ -2597,6 +2837,9 @@ export default function RaffleSpinner({
 
           </div>
         </div>
+
+        {/* Restore Logs Modal Overlay */}
+        {renderImportModal()}
 
         {/* Unified Gameshow Drawing Overlay */}
         {renderUnifiedDrawingOverlay()}
